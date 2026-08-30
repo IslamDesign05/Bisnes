@@ -1,0 +1,6 @@
+{
+  "name": "Учет Заказов",
+  "description": "База данных для учета принятых заказов, автоприсвоения номеров, автоподстановки телефонов клиентов и группировки по месяцам и годам.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
