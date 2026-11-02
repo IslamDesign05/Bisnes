@@ -8,6 +8,9 @@ import {
 import {
   getStoredOrders,
   saveOrders,
+  fetchOrdersFromServer,
+  restoreBackupToServer,
+  checkServerDbStatus,
   getNextOrderNumber,
   formatOrderNumber,
   getClientProfiles,
@@ -24,6 +27,25 @@ import { ClientsModal } from './components/ClientsModal';
 
 export default function App() {
   const [orders, setOrders] = useState<OrderItem[]>(() => getStoredOrders());
+  const [isServerConnected, setIsServerConnected] = useState<boolean>(true);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [lastSyncTime, setLastSyncTime] = useState<string>('');
+
+  // Initial load from internal server database (/data/database.json)
+  useEffect(() => {
+    fetchOrdersFromServer().then((data) => {
+      if (data && Array.isArray(data.orders)) {
+        setOrders(data.orders);
+        setIsServerConnected(true);
+        setLastSyncTime(new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+      } else {
+        // Check health
+        checkServerDbStatus().then((status) => {
+          setIsServerConnected(status.connected);
+        });
+      }
+    });
+  }, []);
 
   // Tabs system
   const [tabs, setTabs] = useState<AppTab[]>([
@@ -41,9 +63,15 @@ export default function App() {
   const [printingOrder, setPrintingOrder] = useState<OrderItem | null>(null);
   const [isClientsModalOpen, setIsClientsModalOpen] = useState<boolean>(false);
 
-  // Auto-save orders whenever they change
+  // Auto-save orders to internal database & localStorage whenever they change
   useEffect(() => {
+    setIsSaving(true);
     saveOrders(orders);
+    const timer = setTimeout(() => {
+      setIsSaving(false);
+      setLastSyncTime(new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' }));
+    }, 300);
+    return () => clearTimeout(timer);
   }, [orders]);
 
   // Derived lists
@@ -206,16 +234,21 @@ export default function App() {
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
         const content = event.target?.result as string;
         const parsed = JSON.parse(content);
+        let loadedOrders: OrderItem[] = [];
         if (Array.isArray(parsed.orders) && parsed.orders.length > 0) {
-          setOrders(parsed.orders);
-          alert(`База данных успешно восстановлена! Загружено ${parsed.orders.length} заказов.`);
+          loadedOrders = parsed.orders;
         } else if (Array.isArray(parsed) && parsed.length > 0) {
-          setOrders(parsed);
-          alert(`База данных успешно восстановлена! Загружено ${parsed.length} заказов.`);
+          loadedOrders = parsed;
+        }
+
+        if (loadedOrders.length > 0) {
+          setOrders(loadedOrders);
+          await restoreBackupToServer(parsed);
+          alert(`Внутренняя база данных успешно восстановлена! Загружено ${loadedOrders.length} заказов.`);
         } else {
           alert('Некорректный формат файла резервной копии.');
         }
@@ -235,7 +268,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#f7f4ee] text-[#141b24] flex flex-col font-sans selection:bg-[#e5a93c] selection:text-slate-950">
-      {/* Global Header with brand, totals, search & backup controls */}
+      {/* Global Header with brand, totals, search, server DB indicator & backup controls */}
       <Header
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
@@ -248,6 +281,9 @@ export default function App() {
         notStartedOrders={notStartedOrders}
         totalSum={totalSum}
         totalAdvance={totalAdvance}
+        isServerConnected={isServerConnected}
+        isSaving={isSaving}
+        lastSyncTime={lastSyncTime}
       />
 
       {/* Desktop-like Tab Bar */}

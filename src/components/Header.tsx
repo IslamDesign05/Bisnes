@@ -10,6 +10,8 @@ import {
   CircleDashed,
   Wallet,
   Coins,
+  Database,
+  RefreshCw,
 } from 'lucide-react';
 import { formatCurrency } from '../utils/storage';
 
@@ -25,6 +27,9 @@ interface HeaderProps {
   notStartedOrders: number;
   totalSum: number;
   totalAdvance: number;
+  isServerConnected?: boolean;
+  isSaving?: boolean;
+  lastSyncTime?: string;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -39,6 +44,9 @@ export const Header: React.FC<HeaderProps> = ({
   notStartedOrders,
   totalSum,
   totalAdvance,
+  isServerConnected = true,
+  isSaving = false,
+  lastSyncTime,
 }) => {
   const remainingBalance = Math.max(0, totalSum - totalAdvance);
 
@@ -53,13 +61,33 @@ export const Header: React.FC<HeaderProps> = ({
               <BookOpen className="w-5 h-5" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-base sm:text-lg font-bold font-serif tracking-tight text-[#141b24]">
                   Журнал Учета Заказов
                 </h1>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[#eef7ee] text-[#2d7a3a] border border-[#cbe6ce]">
-                  БД Активна
-                </span>
+                
+                {/* Database Status Indicator */}
+                {isServerConnected ? (
+                  <div
+                    title="Внутренняя база данных подключена (/data/database.json). Все изменения сразу сохраняются на сервере."
+                    className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[#eef7ee] text-[#2d7a3a] border border-[#cbe6ce]"
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#2d7a3a] animate-pulse" />
+                    <Database className="w-3 h-3" />
+                    <span>{isSaving ? 'Сохранение в БД...' : 'Серверная БД (data/database.json)'}</span>
+                    {lastSyncTime && !isSaving && (
+                      <span className="text-[9px] text-[#428a4e] hidden sm:inline">({lastSyncTime})</span>
+                    )}
+                  </div>
+                ) : (
+                  <div
+                    title="Автономный режим: сохранение в локальное хранилище"
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[#fff8e6] text-[#b45309] border border-[#fde68a]"
+                  >
+                    <span className="w-1.5 h-1.5 rounded-full bg-[#b45309]" />
+                    <span>Локальный режим</span>
+                  </div>
+                )}
               </div>
               <p className="text-xs text-slate-500">
                 Учет принятых заказов, изготовление деталей и расчет авансов

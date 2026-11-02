@@ -138,8 +138,101 @@ export function getStoredOrders(): OrderItem[] {
 export function saveOrders(orders: OrderItem[]): void {
   try {
     localStorage.setItem(STORAGE_KEY_ORDERS, JSON.stringify(orders));
+    // Asynchronously synchronize with backend internal database
+    syncOrdersToServer(orders).catch((err) => {
+      console.warn('[DB Sync] Offline or server not reachable, cached in localStorage:', err);
+    });
   } catch (e) {
     console.error('Error saving orders:', e);
+  }
+}
+
+// --- SERVER INTERNAL DATABASE API SYNC ---
+
+export async function fetchOrdersFromServer(): Promise<{ orders: OrderItem[]; counter: number } | null> {
+  try {
+    const res = await fetch('/api/orders');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (data.success && Array.isArray(data.orders)) {
+      // Update local storage cache
+      localStorage.setItem(STORAGE_KEY_ORDERS, JSON.stringify(data.orders));
+      if (data.counter) {
+        localStorage.setItem(STORAGE_KEY_COUNTER, data.counter.toString());
+      }
+      return { orders: data.orders, counter: data.counter };
+    }
+    return null;
+  } catch (err) {
+    console.warn('[DB Server] Not reachable, using local database cache:', err);
+    return null;
+  }
+}
+
+export async function syncOrdersToServer(orders: OrderItem[], counter?: number): Promise<boolean> {
+  try {
+    const res = await fetch('/api/orders/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orders, counter }),
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    return data.success === true;
+  } catch (err) {
+    return false;
+  }
+}
+
+export async function saveOrderToServer(order: OrderItem): Promise<boolean> {
+  try {
+    const res = await fetch('/api/orders', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(order),
+    });
+    return res.ok;
+  } catch (err) {
+    return false;
+  }
+}
+
+export async function deleteOrderFromServer(orderId: string): Promise<boolean> {
+  try {
+    const res = await fetch(`/api/orders/${encodeURIComponent(orderId)}`, {
+      method: 'DELETE',
+    });
+    return res.ok;
+  } catch (err) {
+    return false;
+  }
+}
+
+export async function restoreBackupToServer(backupData: any): Promise<boolean> {
+  try {
+    const res = await fetch('/api/orders/backup/restore', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(backupData),
+    });
+    return res.ok;
+  } catch (err) {
+    return false;
+  }
+}
+
+export async function checkServerDbStatus(): Promise<{ connected: boolean; totalOrders?: number; lastUpdated?: string }> {
+  try {
+    const res = await fetch('/api/health');
+    if (!res.ok) return { connected: false };
+    const data = await res.json();
+    return {
+      connected: data.dbConnected === true,
+      totalOrders: data.totalOrders,
+      lastUpdated: data.lastUpdated,
+    };
+  } catch (err) {
+    return { connected: false };
   }
 }
 
